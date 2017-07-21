@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+// External API
 function Gambezi(host_address) {
 	// Constructor
 	var m_object = this;
@@ -68,6 +69,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.request_id = function(parent_key, name) {
 		// Create buffer
 		var buffer_raw = new ArrayBuffer(parent_key.length + name.length + 3);
@@ -93,8 +95,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
-	// Also adds all parent keys to the queue if needed
-	// Returns the final node
+	// Internal use only
 	this.add_key_to_request_queue = function(string_key) {
 		// Traverse up to final node
 		var node = m_root_node;
@@ -112,6 +113,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.process_key_request_queue = function() {
 		// Bail if there are no more queued ID requests
 		if(m_key_request_queue.length <= 0) {
@@ -133,6 +135,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.register_key = function(string_key) {
 		// Queue up the ID requests and get the node
 		var node = m_object.add_key_to_request_queue(string_key);
@@ -143,6 +146,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.set_data_raw = function(key, data, offset, length) {
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + length + 4);
@@ -172,6 +176,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.request_data = function(key, get_children) {
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + 3);
@@ -192,6 +197,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.node_traverse = function(binary_key, get_parent) {
 		var node = m_root_node;
 		for(var i = 0;i < binary_key.length - (!!get_parent ? 1 : 0);i++) {
@@ -201,6 +207,7 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.node_traverse_by_name = function(string_key, get_parent) {
 		var node = m_root_node;
 		for(var i = 0;i < string_key.length - (!!get_parent ? 1 : 0);i++) {
@@ -212,6 +219,7 @@ function Gambezi(host_address) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+// External API
 function Node(name, parent_key, parent_gambezi) {
 
 	////////////////////////////////////////////////////////////////////////////////
@@ -230,39 +238,47 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.get_id = function() {
 		return m_key[m_key.length - 1];
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.get_name = function() {
 		return m_name;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.set_key = function(key) {
 		m_key = key;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.get_key = function() {
 		return m_key;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.set_data = function(data) {
 		m_data = data;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.get_data = function() {
 		return m_data;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.on_data_recieved = null;
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.get_child_with_name = function(name) {
 		// See if child already exists
 		for(var i = 0;i < m_children.length;i++) {
@@ -278,6 +294,7 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.get_child_with_id = function(id) {
 		// See if child already exists
 		for(var i = 0;i < m_children.length;i++) {
@@ -291,11 +308,13 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.set_data_raw = function(data, offset, length) {
 		m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
 	this.request_data = function(get_children) {
 		m_gambezi.request_data(m_object.get_key(), get_children);
 	}
