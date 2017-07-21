@@ -218,6 +218,29 @@ function Gambezi(host_address) {
 
 	////////////////////////////////////////////////////////////////////////////////
 	// Internal use only
+	this.update_subscription = function(key, refresh_skip, set_children) {
+		// Create buffer
+		var buffer = new ArrayBuffer(key.length + 5);
+		var view = new Uint8Array(buffer);
+
+		// Header
+		view[0] = 0x03;
+		view[1] = set_children ? 1 : 0;
+		view[2] = (refresh_skip >> 8) & 0xFF;
+		view[3] = (refresh_skip) & 0xFF;
+
+		// Key
+		view[4] = key.length;
+		for(var i = 0;i < key.length;i++) {
+			view[i + 5] = key[i];
+		}
+
+		// Send packet
+		m_websocket.send(buffer);
+	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	// Internal use only
 	this.node_traverse = function(binary_key, get_parent) {
 		var node = m_root_node;
 		for(var i = 0;i < binary_key.length - (!!get_parent ? 1 : 0);i++) {
@@ -353,6 +376,12 @@ function Node(name, parent_key, parent_gambezi) {
 	this.request_data = function(get_children) {
 		m_gambezi.request_data(m_object.get_key(), get_children);
 	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.update_subscription = function(refresh_skip, set_children) {
+		m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -363,6 +392,7 @@ for(var i = 0;i < 5;i++) { dataView[i] = i; }
 
 gambezi = new Gambezi("127.0.0.1:7687");
 gambezi.on_ready = function() {
+	/*
 	var node = gambezi.register_key(['speed test']);
 	node.on_ready = function() {
 		console.log("Running speed test");
@@ -380,4 +410,9 @@ gambezi.on_ready = function() {
 		var time = window.performance.now();
 		node.request_data();
 	};
+	*/
+	node = gambezi.register_key(['data transfer']);
+	node.on_data_recieved = function(node) {
+		console.log(new Uint8Array(node.get_data()));
+	}
 };
