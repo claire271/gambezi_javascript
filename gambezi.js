@@ -8,6 +8,7 @@ function Gambezi(host_address) {
 	m_websocket.binaryType = 'arraybuffer';
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
+	var m_ready = false;
 
 	////////////////////////////////////////////////////////////////////////////////
 	// Recieving data from server
@@ -66,6 +67,25 @@ function Gambezi(host_address) {
 				}
 				break;
 		}
+	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	// Websocket initialized
+	m_websocket.onopen = function(event) {
+		m_ready = true;
+		if(m_object.on_ready) {
+			m_object.on_ready(event);
+		}
+	}
+	
+	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.on_ready = null;
+
+	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.is_ready = function() {
+		return m_ready;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
@@ -236,6 +256,7 @@ function Node(name, parent_key, parent_gambezi) {
 		}
 		m_key.push(-1);
 	}
+	var m_ready = false;
 
 	////////////////////////////////////////////////////////////////////////////////
 	// External API
@@ -253,6 +274,10 @@ function Node(name, parent_key, parent_gambezi) {
 	// Internal use only
 	this.set_key = function(key) {
 		m_key = key;
+		m_ready = true;
+		if(m_object.on_ready) {
+			m_object.on_ready();
+		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
@@ -272,6 +297,16 @@ function Node(name, parent_key, parent_gambezi) {
 	this.get_data = function() {
 		return m_data;
 	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.is_ready = function() {
+		return m_ready;
+	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.on_ready = null;
 
 	////////////////////////////////////////////////////////////////////////////////
 	// External API
@@ -322,7 +357,27 @@ function Node(name, parent_key, parent_gambezi) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-gambezi = new Gambezi("127.0.0.1:7686");
 data = new ArrayBuffer(5)
 dataView = new Uint8Array(data)
 for(var i = 0;i < 5;i++) { dataView[i] = i; }
+
+gambezi = new Gambezi("127.0.0.1:7687");
+gambezi.on_ready = function() {
+	var node = gambezi.register_key(['speed test']);
+	node.on_ready = function() {
+		console.log("Running speed test");
+		var count = 0;
+		var limit = 100000;
+		node.on_data_recieved = function(node) {
+			count++;
+			if(count < limit) {
+				node.request_data();
+			}
+			else {
+				console.log((window.performance.now() - time) / limit * 1000 + " micro seconds per read (round trip)");
+			}
+		}
+		var time = window.performance.now();
+		node.request_data();
+	};
+};
