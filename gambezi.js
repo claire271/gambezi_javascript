@@ -166,6 +166,24 @@ function Gambezi(host_address) {
 	}
 
 	////////////////////////////////////////////////////////////////////////////////
+	// External API
+	this.set_refresh_rate = function(refresh_rate) {
+		// Create buffer
+		var buffer = new ArrayBuffer(3);
+		var view = new Uint8Array(buffer);
+
+		// Header
+		view[0] = 0x02;
+
+		// Length
+		view[1] = (refresh_rate >> 8) & 0xFF
+		view[2] = (refresh_rate) & 0xFF
+
+		// Send packet
+		m_websocket.send(buffer);
+	}
+
+	////////////////////////////////////////////////////////////////////////////////
 	// Internal use only
 	this.set_data_raw = function(key, data, offset, length) {
 		// Create buffer
@@ -390,7 +408,7 @@ data = new ArrayBuffer(5)
 dataView = new Uint8Array(data)
 for(var i = 0;i < 5;i++) { dataView[i] = i; }
 
-gambezi = new Gambezi("127.0.0.1:7687");
+gambezi = new Gambezi("127.0.0.1:7709");
 gambezi.on_ready = function() {
 	/*
 	var node = gambezi.register_key(['speed test']);
