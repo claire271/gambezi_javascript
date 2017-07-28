@@ -727,6 +727,33 @@ function Node(name, parent_key, parent_gambezi) {
 		return new Uint8Array(m_data)[0] != 0x00;
 	}
 
+	/**
+	 * Sets the value of the node as a string
+	 *
+	 * Visibility: Public
+	 */
+	this.set_string = function(value) {
+		var buffer = new ArrayBuffer(value.length);
+		var byte_view = new Uint8Array(buffer);
+		for(var i = 0;i < value.length;i++) {
+			byte_view[i] = value.charCodeAt(i);
+		}
+		return m_object.set_data_raw(buffer, 0, value.length);
+	}
+
+	/**
+	 * Gets the value of this node as a string
+	 *
+	 * Visibility: Public
+	 */
+	this.get_string = function() {
+		var output = "";
+		var buffer = new Uint8Array(m_data);
+		for(var i = 0;i < m_data.byteLength;i++) {
+			output += String.fromCharCode(buffer[i]);
+		}
+		return output;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
