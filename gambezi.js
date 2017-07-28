@@ -672,6 +672,7 @@ function Node(name, parent_key, parent_gambezi) {
 
 	/**
 	 * Gets the value of this node as a 32 bit float
+	 * Returns NaN as the default if the format does not match
 	 *
 	 * Visibility: Public
 	 */
@@ -698,6 +699,34 @@ function Node(name, parent_key, parent_gambezi) {
 
 		return new Float32Array(buffer)[0];
 	}
+
+	/**
+	 * Sets the value of the node as a boolean
+	 *
+	 * Visibility: Public
+	 */
+	this.set_boolean = function(value) {
+		var length = 1;
+		var buffer = new ArrayBuffer(length);
+		new Uint8Array(buffer)[0] = value ? 0x01 : 0x00;
+		return m_object.set_data_raw(buffer, 0, length);
+	}
+
+	/**
+	 * Gets the value of this node as a boolean
+	 * Returns false as the default if the format does not match
+	 *
+	 * Visibility: Public
+	 */
+	this.get_boolean = function() {
+		var length = 1;
+		// Bail if the size is incorrect
+		if(m_data.byteLength != length) {
+			return false;
+		}
+		return new Uint8Array(m_data)[0] != 0x00;
+	}
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
