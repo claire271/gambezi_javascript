@@ -95,7 +95,7 @@ function Gambezi(host_address) {
 				}
 
 				// Get the matching node and set the data
-				var node = node_traverse(binary_key);
+				var node = node_traverse(binary_key, false);
 				// Bail if the key is bad
 				if(node == null) {
 					break;
@@ -150,26 +150,30 @@ function Gambezi(host_address) {
 	/**
 	 * Requests the ID of a node for a given parent key and name
 	 *
-	 * Visibility: Private
+	 * get_children determines if all descendent keys will
+	 * be retrieved
+	 *
+	 * Visibility: Package
 	 */
-	function request_id(parent_key, name) {
+	this.request_id = function(parent_key, name, get_children) {
 		// Create buffer
-		var buffer_raw = new ArrayBuffer(parent_key.length + name.length + 3);
+		var buffer_raw = new ArrayBuffer(parent_key.length + name.length + 4);
 		var buffer = new Uint8Array(buffer_raw);
 
 		// Header
 		buffer[0] = 0x00;
+		buffer[1] = get_children ? 1 : 0;
 
 		// Parent key
-		buffer[1] = parent_key.length;
+		buffer[2] = parent_key.length;
 		for(var i = 0;i < parent_key.length;i++) {
-			buffer[i + 2] = parent_key[i];
+			buffer[i + 3] = parent_key[i];
 		}
 
 		// Name
-		buffer[2 + parent_key.length] = name.length;
+		buffer[3 + parent_key.length] = name.length;
 		for(var j = 0;j < name.length;j++) {
-			buffer[j + 3 + parent_key.length] = name.charCodeAt(j);
+			buffer[j + 4 + parent_key.length] = name.charCodeAt(j);
 		}
 
 		// Send packet
@@ -234,7 +238,7 @@ function Gambezi(host_address) {
 
 		// Request the ID
 		var name = string_key[string_key.length - 1];
-		request_id(parent_binary_key, name);
+		m_object.request_id(parent_binary_key, name, false);
 
 		// Success
 		return 0;
@@ -413,7 +417,7 @@ function Gambezi(host_address) {
 	 */
 	function node_traverse(binary_key, get_parent) {
 		var node = m_root_node;
-		for(var i = 0;i < binary_key.length - (!!get_parent ? 1 : 0);i++) {
+		for(var i = 0;i < binary_key.length - (get_parent ? 1 : 0);i++) {
 			node = node.get_child_with_id(binary_key[i]);
 			// Bail if the key is bad
 			if(node == null) {
@@ -448,6 +452,15 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 	var m_ready = false;
 	// End constructor
+	
+	/**
+	 * Gets all children currently visible to this node
+	 *
+	 * Visibility: Public
+	 */
+	this.get_children = function() {
+		return m_children;
+	}
 
 	/**
 	 * Gets the ID of this node
@@ -572,10 +585,10 @@ function Node(name, parent_key, parent_gambezi) {
 	/**
 	 * Sets the value of a node with a byte buffer
 	 * 
-	 * Visibility: Package
+	 * Visibility: Public
 	 */
 	this.set_data_raw = function(data, offset, length) {
-		m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
+		return m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
 	}
 
 	/**
@@ -584,14 +597,14 @@ function Node(name, parent_key, parent_gambezi) {
 	 * get_children determines if all descendent keys will
 	 * be retrieved
 	 * 
-	 * Visibilty: Package
+	 * Visibilty: Public
 	 */
 	this.request_data = function(get_children) {
-		m_gambezi.request_data(m_object.get_key(), get_children);
+		return m_gambezi.request_data(m_object.get_key(), get_children);
 	}
 
 	/**
-	 * Updates the subscription for a paticular key
+	 * Updates the subscription for this node
 	 *
 	 * set_children determines if all descendent keys will
 	 * be retrieved
@@ -602,10 +615,19 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Any other value of refresh skip indicates that this node
 	 * will be retrieved every n client updates
 	 *
-	 * Visibility: Package
+	 * Visibility: Public
 	 */
 	this.update_subscription = function(refresh_skip, set_children) {
-		m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+		return m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+	}
+
+	/**
+	 * Retrieves all children of this node
+	 *
+	 * Visibility: Public
+	 */
+	this.retrieve_children = function() {
+		return m_gambezi.request_id(m_key.slice(0, -1) , m_name, true);
 	}
 }
 
@@ -617,6 +639,7 @@ for(var i = 0;i < 5;i++) { dataView[i] = i; }
 gambezi = new Gambezi("localhost:7709");
 gambezi.on_ready = function() {
 	gambezi.on_error = console.log;
+	/*
 	var node = gambezi.register_key(['speed test']);
 	node.on_ready = function() {
 		gambezi.set_refresh_rate(10);
@@ -640,11 +663,28 @@ gambezi.on_ready = function() {
 		var time = window.performance.now();
 		//node.request_data();
 	};
+	*/
 
-	/*
-	node = gambezi.register_key(['data transfer']);
-	node.on_data_recieved = function(node) {
+	a = gambezi.register_key(['a']);
+	a.on_data_recieved = function(node) {
+		console.log(node.get_name());
 		console.log(new Uint8Array(node.get_data()));
 	};
-	*/
+	a.on_ready = function() {
+		b = gambezi.register_key(['a', 'b']);
+		b.on_data_recieved = function(node) {
+			console.log(node.get_name());
+			console.log(new Uint8Array(node.get_data()));
+		};
+		b.on_ready = function() {
+			c = gambezi.register_key(['a', 'b', 'c']);
+			c.on_data_recieved = function(node) {
+				console.log(node.get_name());
+				console.log(new Uint8Array(node.get_data()));
+			};
+			c.on_ready = function() {
+				
+			}
+		}
+	}
 };
