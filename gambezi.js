@@ -65,11 +65,11 @@ function Gambezi(host_address) {
 				node.set_key(binary_key);
 
 				// Get the next queued ID request
-				var value = 1;
-				while(value > 0) {
-					value = process_key_request_queue();
+				var code = 1;
+				while(code > 0) {
+					code = process_key_request_queue();
 					// Error when processing IDs
-					if(value) {
+					if(code) {
 						if(m_object.on_error) {
 							m_object.on_error("Error processing ID queue");
 						}
@@ -105,6 +105,20 @@ function Gambezi(host_address) {
 				// Callback if present
 				if(node.on_data_recieved) {
 					node.on_data_recieved(node);
+				}
+				break;
+
+			////////////////////////////////////////
+			// Error message from server
+			case 2:
+				// Extract message
+				var message = "";
+				for(var i = 0;i < buffer[1];i++) {
+					message += String.fromCharCode(buffer[2 + i]);
+				}
+				// Use the message
+				if(m_object.on_error) {
+					m_object.on_error(message);
 				}
 				break;
 		}
@@ -235,11 +249,11 @@ function Gambezi(host_address) {
 		// Queue up the ID requests and get the node
 		var node = add_key_to_request_queue(string_key);
 		// Get an IDs necessary
-		var value = 1;
-		while(value > 0) {
-			value = process_key_request_queue();
+		var code = 1;
+		while(code > 0) {
+			code = process_key_request_queue();
 			// Error when processing IDs
-			if(value) {
+			if(code) {
 				if(m_object.on_error) {
 					m_object.on_error("Error processing ID queue");
 				}
@@ -602,9 +616,11 @@ for(var i = 0;i < 5;i++) { dataView[i] = i; }
 
 gambezi = new Gambezi("localhost:7709");
 gambezi.on_ready = function() {
+	gambezi.on_error = console.log;
 	var node = gambezi.register_key(['speed test']);
 	node.on_ready = function() {
 		gambezi.set_refresh_rate(10);
+		node.update_subscription(0);
 		node.update_subscription(1);
 		console.log("Running speed test");
 		var count = 0;
