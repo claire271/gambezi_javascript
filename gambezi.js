@@ -13,6 +13,13 @@ function Gambezi(host_address) {
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
 	var m_ready = false;
+	var m_big_endian = false;
+	// Test endianess
+	var mc_buffer = new ArrayBuffer(2);
+	var mc_byte_view = new Uint8Array(mc_buffer);
+	var mc_short_view = new Uint16Array(mc_buffer);
+	mc_short_view[0] = 0x00FF;
+	m_big_endian = mc_byte_view[0] == 0x00;
 	// End constructor
 
 	/**
@@ -145,6 +152,15 @@ function Gambezi(host_address) {
 	 */
 	this.is_ready = function() {
 		return m_ready;
+	}
+
+	/**
+	 * Returns if the client is big endian
+	 *
+	 * Visibility: Public
+	 */
+	this.is_big_endian = function() {
+		return m_big_endian;
 	}
 
 	/**
@@ -629,6 +645,59 @@ function Node(name, parent_key, parent_gambezi) {
 	this.retrieve_children = function() {
 		return m_gambezi.request_id(m_key.slice(0, -1) , m_name, true);
 	}
+
+	/**
+	 * Sets the value of the node as a 32 bit float
+	 *
+	 * Visibility: Public
+	 */
+	this.set_float = function(value) {
+		var length = 4;
+		var buffer = new ArrayBuffer(length);
+		new Float32Array(buffer)[0] = value;
+		var byte_view = new Uint8Array(buffer);
+		// Handle endianess
+		if(!m_gambezi.is_big_endian()) {
+			var temp = byte_view[0];
+			byte_view[0] = byte_view[3];
+			byte_view[3] = temp;
+
+			temp = byte_view[1];
+			byte_view[1] = byte_view[2];
+			byte_view[2] = temp;
+		}
+
+		return m_object.set_data_raw(buffer, 0, length);
+	}
+
+	/**
+	 * Gets the value of this node as a 32 bit float
+	 *
+	 * Visibility: Public
+	 */
+	this.get_float = function() {
+		var length = 4;
+		// Bail if the size is incorrect
+		if(m_data.byteLength != length) {
+			return NaN;
+		}
+
+		var buffer = new ArrayBuffer(length);
+		var byte_view = new Uint8Array(buffer);
+		byte_view.set(new Uint8Array(m_data));
+		// Handle endianess
+		if(!m_gambezi.is_big_endian()) {
+			var temp = byte_view[0];
+			byte_view[0] = byte_view[3];
+			byte_view[3] = temp;
+
+			temp = byte_view[1];
+			byte_view[1] = byte_view[2];
+			byte_view[2] = temp;
+		}
+
+		return new Float32Array(buffer)[0];
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -669,8 +738,11 @@ gambezi.on_ready = function() {
 	a.on_data_recieved = function(node) {
 		console.log(node.get_name());
 		console.log(new Uint8Array(node.get_data()));
+		console.log(node.get_float());
 	};
 	a.on_ready = function() {
+		a.update_subscription(0x0000);
+		/*
 		b = gambezi.register_key(['a', 'b']);
 		b.on_data_recieved = function(node) {
 			console.log(node.get_name());
@@ -686,5 +758,6 @@ gambezi.on_ready = function() {
 				
 			}
 		}
+		*/
 	}
 };
