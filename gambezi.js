@@ -33,6 +33,10 @@ function Gambezi(host_address) {
 
 				// Get the matching node and set the ID
 				var node = m_object.node_traverse(binary_key, true);
+				// Bail if the key is bad
+				if(node == null) {
+					break;
+				}
 				node = node.get_child_with_name(name);
 				node.set_key(binary_key);
 
@@ -263,6 +267,10 @@ function Gambezi(host_address) {
 		var node = m_root_node;
 		for(var i = 0;i < binary_key.length - (!!get_parent ? 1 : 0);i++) {
 			node = node.get_child_with_id(binary_key[i]);
+			// Bail if the key is bad
+			if(node == null) {
+				return null;
+			}
 		}
 		return node;
 	}
@@ -410,27 +418,33 @@ for(var i = 0;i < 5;i++) { dataView[i] = i; }
 
 gambezi = new Gambezi("127.0.0.1:7709");
 gambezi.on_ready = function() {
-	/*
 	var node = gambezi.register_key(['speed test']);
 	node.on_ready = function() {
+		gambezi.set_refresh_rate(10);
+		node.update_subscription(1);
 		console.log("Running speed test");
 		var count = 0;
-		var limit = 100000;
+		var limit = 1000;
 		node.on_data_recieved = function(node) {
 			count++;
 			if(count < limit) {
-				node.request_data();
+				//node.request_data();
 			}
 			else {
+				//console.log((window.performance.now() - time) / limit * 1000 + " micro seconds per read (round trip)");
+			}
+			if(count == limit) {
 				console.log((window.performance.now() - time) / limit * 1000 + " micro seconds per read (round trip)");
 			}
 		}
 		var time = window.performance.now();
-		node.request_data();
+		//node.request_data();
 	};
-	*/
+
+	/*
 	node = gambezi.register_key(['data transfer']);
 	node.on_data_recieved = function(node) {
 		console.log(new Uint8Array(node.get_data()));
-	}
+	};
+	*/
 };
