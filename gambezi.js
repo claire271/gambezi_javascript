@@ -1,23 +1,47 @@
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// External API
+/**
+ * Constructs a gambezi instance and connects to a server at the given address
+ * Visibility: Public
+ */
 function Gambezi(host_address) {
-	// Constructor
+	/**
+	 * Constructor
+	 */
 	var m_object = this;
 	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
 	m_websocket.binaryType = 'arraybuffer';
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
 	var m_ready = false;
+	// End constructor
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Recieving data from server
+	/**
+	 * Callback when there is a websocket error 
+	 */
+	m_websocket.onerror = function(event) {
+		if(m_object.on_error) {
+			m_object.on_error(event);
+		}
+	}
+
+	/**
+	 * Callback when the websocket gets initialized
+	 */
+	m_websocket.onopen = function(event) {
+		m_ready = true;
+		if(m_object.on_ready) {
+			m_object.on_ready(event);
+		}
+	}
+
+	/**
+	 * Callback when the client recieves a packet from the server
+	 */
 	m_websocket.onmessage = function(event) {
 		var buffer = new Uint8Array(event.data);
 		switch(buffer[0]) {
-
 			////////////////////////////////////////
-			// ID request response from server
+			// ID response from server
 			case 0:
 				// Extract binary key
 				var binary_key = new Array(buffer[1]);
@@ -32,7 +56,7 @@ function Gambezi(host_address) {
 				}
 
 				// Get the matching node and set the ID
-				var node = m_object.node_traverse(binary_key, true);
+				var node = node_traverse(binary_key, true);
 				// Bail if the key is bad
 				if(node == null) {
 					break;
@@ -41,7 +65,16 @@ function Gambezi(host_address) {
 				node.set_key(binary_key);
 
 				// Get the next queued ID request
-				m_object.process_key_request_queue();
+				var value = 1;
+				while(value > 0) {
+					value = process_key_request_queue();
+					// Error when processing IDs
+					if(value) {
+						if(m_object.on_error) {
+							m_object.on_error("Error processing ID queue");
+						}
+					}
+				}
 				break;
 
 			////////////////////////////////////////
@@ -62,7 +95,11 @@ function Gambezi(host_address) {
 				}
 
 				// Get the matching node and set the data
-				var node = m_object.node_traverse(binary_key);
+				var node = node_traverse(binary_key);
+				// Bail if the key is bad
+				if(node == null) {
+					break;
+				}
 				node.set_data(data);
 
 				// Callback if present
@@ -73,28 +110,35 @@ function Gambezi(host_address) {
 		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Websocket initialized
-	m_websocket.onopen = function(event) {
-		m_ready = true;
-		if(m_object.on_ready) {
-			m_object.on_ready(event);
-		}
-	}
+	/**
+	 * This callback is called when this gambezi instance has an error
+	 *
+	 * Visibility: Public
+	 */
+	this.on_error = null;
 	
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * This callback is called when this gambezi instance is ready
+	 *
+	 * Visibility: Public
+	 */
 	this.on_ready = null;
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Returns whether this gambezi instance is ready to communicate
+	 *
+	 * Visibility: Public
+	 */
 	this.is_ready = function() {
 		return m_ready;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
-	this.request_id = function(parent_key, name) {
+	/**
+	 * Requests the ID of a node for a given parent key and name
+	 *
+	 * Visibility: Private
+	 */
+	function request_id(parent_key, name) {
 		// Create buffer
 		var buffer_raw = new ArrayBuffer(parent_key.length + name.length + 3);
 		var buffer = new Uint8Array(buffer_raw);
@@ -115,13 +159,25 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		m_websocket.send(buffer_raw);
+		if(m_ready) {
+			m_websocket.send(buffer_raw);
+			return 0;
+		}
+		else {
+			return 1;
+		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
-	this.add_key_to_request_queue = function(string_key) {
-		// Traverse up to final node
+	/**
+	 * Queues up a string key and all of its ancestors so their IDs
+	 * can be requested from the server
+	 *
+	 * Returns the node that is identified by the string key
+	 * This node may or may not be ready for interaction yet
+	 *
+	 * Visibility: Private
+	 */
+	function add_key_to_request_queue(string_key) {
 		var node = m_root_node;
 		for(var i = 0;i < string_key.length;i++) {
 			// Go down one level
@@ -133,44 +189,71 @@ function Gambezi(host_address) {
 			}
 		}
 
+		// Return the node identified by the string key
 		return node;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
-	this.process_key_request_queue = function() {
+	/**
+	 * Processes a string key request in the queue
+	 * 
+	 * Visibility: Private
+	 */
+	function process_key_request_queue() {
 		// Bail if there are no more queued ID requests
 		if(m_key_request_queue.length <= 0) {
-			return;
+			return 0;
 		}
 
-		// Build the parent key
+		// Build the binary parent key
 		var string_key = m_key_request_queue.shift();
 		var parent_binary_key = new Array(string_key.length - 1);
 		var node = m_root_node;
 		for(var i = 0;i < string_key.length - 1;i++) {
 			node = node.get_child_with_name(string_key[i]);
-			parent_binary_key[i] = node.get_id();
+			var id = node.get_id();
+			// Bail if the parent does not have an ID
+			if(id < 0) {
+				return 1;
+			}
+			parent_binary_key[i] = id;
 		}
 
 		// Request the ID
 		var name = string_key[string_key.length - 1];
-		m_object.request_id(parent_binary_key, name);
+		request_id(parent_binary_key, name);
+
+		// Success
+		return 0;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Registers a string key and gets the corresponding node
+	 * 
+	 * Visibility: Public
+	 */
 	this.register_key = function(string_key) {
 		// Queue up the ID requests and get the node
-		var node = m_object.add_key_to_request_queue(string_key);
+		var node = add_key_to_request_queue(string_key);
 		// Get an IDs necessary
-		m_object.process_key_request_queue();
+		var value = 1;
+		while(value > 0) {
+			value = process_key_request_queue();
+			// Error when processing IDs
+			if(value) {
+				if(m_object.on_error) {
+					m_object.on_error("Error processing ID queue");
+				}
+			}
+		}
 		// Return
 		return node;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Sets the refresh rate of this client in milliseconds
+	 * 
+	 * Visibility: Public
+	 */
 	this.set_refresh_rate = function(refresh_rate) {
 		// Create buffer
 		var buffer = new ArrayBuffer(3);
@@ -184,11 +267,20 @@ function Gambezi(host_address) {
 		view[2] = (refresh_rate) & 0xFF
 
 		// Send packet
-		m_websocket.send(buffer);
+		if(m_ready) {
+			m_websocket.send(buffer);
+			return 0;
+		}
+		else {
+			return 1;
+		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Sets the value of a node with a byte buffer
+	 * 
+	 * Visibility: Package
+	 */
 	this.set_data_raw = function(key, data, offset, length) {
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + length + 4);
@@ -214,11 +306,23 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		m_websocket.send(buffer);
+		if(m_ready) {
+			m_websocket.send(buffer);
+			return 0;
+		}
+		else {
+			return 1;
+		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Requests the value of a node
+	 * 
+	 * get_children determines if all descendent keys will
+	 * be retrieved
+	 * 
+	 * Visibilty: Package
+	 */
 	this.request_data = function(key, get_children) {
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + 3);
@@ -235,11 +339,29 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		m_websocket.send(buffer);
+		if(m_ready) {
+			m_websocket.send(buffer);
+			return 0;
+		}
+		else {
+			return 1;
+		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Updates the subscription for a paticular key
+	 *
+	 * set_children determines if all descendent keys will
+	 * be retrieved
+	 *
+	 * Values for refresh_skip
+	 * 0x0000 - get node value updates as soon as they arrive
+	 * 0xFFFF - unsubscribe from this key
+	 * Any other value of refresh skip indicates that this node
+	 * will be retrieved every n client updates
+	 *
+	 * Visibility: Package
+	 */
 	this.update_subscription = function(key, refresh_skip, set_children) {
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + 5);
@@ -258,12 +380,24 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		m_websocket.send(buffer);
+		if(m_ready) {
+			m_websocket.send(buffer);
+			return 0;
+		}
+		else {
+			return 1;
+		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
-	this.node_traverse = function(binary_key, get_parent) {
+	/**
+	 * Gets the node for a given binary key
+	 *
+	 * get_parent determines if the immediate parent of the binary
+	 * key will be retrieved instead
+	 *
+	 * Visibility: Private
+	 */
+	function node_traverse(binary_key, get_parent) {
 		var node = m_root_node;
 		for(var i = 0;i < binary_key.length - (!!get_parent ? 1 : 0);i++) {
 			node = node.get_child_with_id(binary_key[i]);
@@ -274,25 +408,18 @@ function Gambezi(host_address) {
 		}
 		return node;
 	}
-
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
-	this.node_traverse_by_name = function(string_key, get_parent) {
-		var node = m_root_node;
-		for(var i = 0;i < string_key.length - (!!get_parent ? 1 : 0);i++) {
-			node = node.get_child_with_name(string_key[i]);
-		}
-		return node;
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// External API
+/**
+ * Constructs a node with a given name, parent key, and gambezi
+ * If the parent key is null, the Node is constructed as the root node
+ * Visibility: Public
+ */
 function Node(name, parent_key, parent_gambezi) {
-
-	////////////////////////////////////////////////////////////////////////////////
-	// Constructor
+	/**
+	 * Constructor
+	 */
 	var m_object = this;
 	var m_name = name;
 	var m_children = [];
@@ -306,21 +433,32 @@ function Node(name, parent_key, parent_gambezi) {
 		m_key.push(-1);
 	}
 	var m_ready = false;
+	// End constructor
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Gets the ID of this node
+	 * -1 indicates no ID assigned yet
+	 *
+	 * Visibility: Public
+	 */
 	this.get_id = function() {
 		return m_key[m_key.length - 1];
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Gets the name of this node
+	 *
+	 * Visibility: Public
+	 */
 	this.get_name = function() {
 		return m_name;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Sets the binary key of this node
+	 *
+	 * Visibility: Package
+	 */
 	this.set_key = function(key) {
 		m_key = key;
 		m_ready = true;
@@ -329,40 +467,62 @@ function Node(name, parent_key, parent_gambezi) {
 		}
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Gets the binary key of this node
+	 *
+	 * Visibility: Public
+	 */
 	this.get_key = function() {
 		return m_key;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Sets the data of this node
+	 *
+	 * Visibility: Package
+	 */
 	this.set_data = function(data) {
 		m_data = data;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Gets the data of this node
+	 *
+	 * Visibility: Public
+	 */
 	this.get_data = function() {
 		return m_data;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Returns if this node is ready to communicate
+	 *
+	 * Visibility: Public
+	 */
 	this.is_ready = function() {
 		return m_ready;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * This callback is called when this node is ready to communicate
+	 *
+	 * Visibility: Public
+	 */
 	this.on_ready = null;
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * This callback is called when this node's value is updated by the server
+	 *
+	 * Visibility: Public
+	 */
 	this.on_data_recieved = null;
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Gets the child node with the specified name
+	 * Creates a new child with the name if there is no existing child
+	 *
+	 * Visibility: Package
+	 */
 	this.get_child_with_name = function(name) {
 		// See if child already exists
 		for(var i = 0;i < m_children.length;i++) {
@@ -371,14 +531,18 @@ function Node(name, parent_key, parent_gambezi) {
 			}
 		}
 
-		// Create child
+		// Create child if nonexistent
 		child = new Node(name, m_key, m_gambezi);
 		m_children.push(child);
 		return child;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// Internal use only
+	/**
+	 * Gets the child node with the specified ID
+	 * Returns null if the id is not found
+	 *
+	 * Visibility: Package
+	 */
 	this.get_child_with_id = function(id) {
 		// See if child already exists
 		for(var i = 0;i < m_children.length;i++) {
@@ -391,32 +555,52 @@ function Node(name, parent_key, parent_gambezi) {
 		return null;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Sets the value of a node with a byte buffer
+	 * 
+	 * Visibility: Package
+	 */
 	this.set_data_raw = function(data, offset, length) {
 		m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Requests the value of a node
+	 * 
+	 * get_children determines if all descendent keys will
+	 * be retrieved
+	 * 
+	 * Visibilty: Package
+	 */
 	this.request_data = function(get_children) {
 		m_gambezi.request_data(m_object.get_key(), get_children);
 	}
 
-	////////////////////////////////////////////////////////////////////////////////
-	// External API
+	/**
+	 * Updates the subscription for a paticular key
+	 *
+	 * set_children determines if all descendent keys will
+	 * be retrieved
+	 *
+	 * Values for refresh_skip
+	 * 0x0000 - get node value updates as soon as they arrive
+	 * 0xFFFF - unsubscribe from this key
+	 * Any other value of refresh skip indicates that this node
+	 * will be retrieved every n client updates
+	 *
+	 * Visibility: Package
+	 */
 	this.update_subscription = function(refresh_skip, set_children) {
 		m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 data = new ArrayBuffer(5)
 dataView = new Uint8Array(data)
 for(var i = 0;i < 5;i++) { dataView[i] = i; }
 
-gambezi = new Gambezi("127.0.0.1:7709");
+gambezi = new Gambezi("localhost:7709");
 gambezi.on_ready = function() {
 	var node = gambezi.register_key(['speed test']);
 	node.on_ready = function() {
