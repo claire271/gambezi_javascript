@@ -10,16 +10,10 @@ function Gambezi(host_address) {
 	var m_object = this;
 	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
 	m_websocket.binaryType = 'arraybuffer';
+	var m_send_queue = [];
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
 	var m_ready = false;
-	var m_big_endian = false;
-	// Test endianess
-	var mc_buffer = new ArrayBuffer(2);
-	var mc_byte_view = new Uint8Array(mc_buffer);
-	var mc_short_view = new Uint16Array(mc_buffer);
-	mc_short_view[0] = 0x00FF;
-	m_big_endian = mc_byte_view[0] == 0x00;
 	// End constructor
 
 	/**
@@ -35,10 +29,19 @@ function Gambezi(host_address) {
 	 * Callback when the websocket gets initialized
 	 */
 	m_websocket.onopen = function(event) {
+		// Notify of ready state
 		m_ready = true;
 		if(m_object.on_ready) {
 			m_object.on_ready(event);
 		}
+
+		// Send queued packets
+		while(m_send_queue.length > 0) {
+			(m_send_queue.shift())();
+		}
+
+		// Get the next queued ID request
+		process_key_request_queue();
 	}
 
 	/**
@@ -72,16 +75,7 @@ function Gambezi(host_address) {
 				node.set_key(binary_key);
 
 				// Get the next queued ID request
-				var code = 1;
-				while(code > 0) {
-					code = process_key_request_queue();
-					// Error when processing IDs
-					if(code) {
-						if(m_object.on_error) {
-							m_object.on_error("Error processing ID queue");
-						}
-					}
-				}
+				process_key_request_queue();
 				break;
 
 			////////////////////////////////////////
@@ -107,7 +101,7 @@ function Gambezi(host_address) {
 				if(node == null) {
 					break;
 				}
-				node.set_data(data);
+				node.set_data(data_raw);
 
 				// Callback if present
 				if(node.on_data_recieved) {
@@ -155,15 +149,6 @@ function Gambezi(host_address) {
 	}
 
 	/**
-	 * Returns if the client is big endian
-	 *
-	 * Visibility: Public
-	 */
-	this.is_big_endian = function() {
-		return m_big_endian;
-	}
-
-	/**
 	 * Requests the ID of a node for a given parent key and name
 	 *
 	 * get_children determines if all descendent keys will
@@ -172,6 +157,8 @@ function Gambezi(host_address) {
 	 * Visibility: Package
 	 */
 	this.request_id = function(parent_key, name, get_children) {
+		// This method is always guarded when called, so no need to check readiness
+
 		// Create buffer
 		var buffer_raw = new ArrayBuffer(parent_key.length + name.length + 4);
 		var buffer = new Uint8Array(buffer_raw);
@@ -192,26 +179,60 @@ function Gambezi(host_address) {
 			buffer[j + 4 + parent_key.length] = name.charCodeAt(j);
 		}
 
-		// Send packet
-		if(m_ready) {
-			m_websocket.send(buffer_raw);
-			return 0;
-		}
-		else {
-			return 1;
+		// Send data
+		m_websocket.send(buffer_raw);
+	}
+
+	/**
+	 * Processes string key requests in the queue until one succeeds
+	 * 
+	 * Visibility: Private
+	 */
+	function process_key_request_queue() {
+		// This method is always guarded when called, so no need to check readiness
+		
+		// Process entires until one succeeds without an error
+		while(m_key_request_queue.length > 0) {
+			var code = 0;
+
+			// Build the binary parent key
+			var string_key = m_key_request_queue.shift();
+			var parent_binary_key = new Array(string_key.length - 1);
+			var node = m_root_node;
+			for(var i = 0;i < string_key.length - 1;i++) {
+				node = node.get_child_with_name(string_key[i]);
+				var id = node.get_id();
+				// Bail if the parent does not have an ID
+				if(id < 0) {
+					code = 1;
+					break;
+				}
+				parent_binary_key[i] = id;
+			}
+
+			// Error when building binary key
+			if(code > 0) {
+				if(m_object.on_error) {
+					m_object.on_error("Error processing ID queue");
+				}
+			}
+			// No error
+			else {
+				// Request the ID
+				var name = string_key[string_key.length - 1];
+				m_object.request_id(parent_binary_key, name, false);
+				break;
+			}
 		}
 	}
 
 	/**
-	 * Queues up a string key and all of its ancestors so their IDs
-	 * can be requested from the server
-	 *
-	 * Returns the node that is identified by the string key
-	 * This node may or may not be ready for interaction yet
-	 *
-	 * Visibility: Private
+	 * Registers a string key and gets the corresponding node
+	 * 
+	 * Visibility: Public
 	 */
-	function add_key_to_request_queue(string_key) {
+	this.register_key = function(string_key) {
+		// Queue up the ID requests and get the node
 		var node = m_root_node;
 		for(var i = 0;i < string_key.length;i++) {
 			// Go down one level
@@ -223,62 +244,11 @@ function Gambezi(host_address) {
 			}
 		}
 
-		// Return the node identified by the string key
-		return node;
-	}
-
-	/**
-	 * Processes a string key request in the queue
-	 * 
-	 * Visibility: Private
-	 */
-	function process_key_request_queue() {
-		// Bail if there are no more queued ID requests
-		if(m_key_request_queue.length <= 0) {
-			return 0;
+		// Get any IDs necessary
+		if(m_ready) {
+			process_key_request_queue();
 		}
 
-		// Build the binary parent key
-		var string_key = m_key_request_queue.shift();
-		var parent_binary_key = new Array(string_key.length - 1);
-		var node = m_root_node;
-		for(var i = 0;i < string_key.length - 1;i++) {
-			node = node.get_child_with_name(string_key[i]);
-			var id = node.get_id();
-			// Bail if the parent does not have an ID
-			if(id < 0) {
-				return 1;
-			}
-			parent_binary_key[i] = id;
-		}
-
-		// Request the ID
-		var name = string_key[string_key.length - 1];
-		m_object.request_id(parent_binary_key, name, false);
-
-		// Success
-		return 0;
-	}
-
-	/**
-	 * Registers a string key and gets the corresponding node
-	 * 
-	 * Visibility: Public
-	 */
-	this.register_key = function(string_key) {
-		// Queue up the ID requests and get the node
-		var node = add_key_to_request_queue(string_key);
-		// Get an IDs necessary
-		var code = 1;
-		while(code > 0) {
-			code = process_key_request_queue();
-			// Error when processing IDs
-			if(code) {
-				if(m_object.on_error) {
-					m_object.on_error("Error processing ID queue");
-				}
-			}
-		}
 		// Return
 		return node;
 	}
@@ -289,23 +259,26 @@ function Gambezi(host_address) {
 	 * Visibility: Public
 	 */
 	this.set_refresh_rate = function(refresh_rate) {
-		// Create buffer
-		var buffer = new ArrayBuffer(3);
-		var view = new Uint8Array(buffer);
-
-		// Header
-		view[0] = 0x02;
-
-		// Length
-		view[1] = (refresh_rate >> 8) & 0xFF
-		view[2] = (refresh_rate) & 0xFF
-
-		// Send packet
 		if(m_ready) {
+			// Create buffer
+			var buffer = new ArrayBuffer(3);
+			var view = new Uint8Array(buffer);
+
+			// Header
+			view[0] = 0x02;
+
+			// Length
+			view[1] = (refresh_rate >> 8) & 0xFF
+			view[2] = (refresh_rate) & 0xFF
+
+			// Send packet
 			m_websocket.send(buffer);
 			return 0;
 		}
 		else {
+			m_send_queue.push(function() {
+				m_object.set_refresh_rate(refresh_rate);
+			});
 			return 1;
 		}
 	}
@@ -316,6 +289,8 @@ function Gambezi(host_address) {
 	 * Visibility: Package
 	 */
 	this.set_data_raw = function(key, data, offset, length) {
+		// This method is always guarded when called, so no need to check readiness
+
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + length + 4);
 		var view = new Uint8Array(buffer);
@@ -340,13 +315,7 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		if(m_ready) {
-			m_websocket.send(buffer);
-			return 0;
-		}
-		else {
-			return 1;
-		}
+		m_websocket.send(buffer);
 	}
 
 	/**
@@ -358,6 +327,8 @@ function Gambezi(host_address) {
 	 * Visibilty: Package
 	 */
 	this.request_data = function(key, get_children) {
+		// This method is always guarded when called, so no need to check readiness
+
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + 3);
 		var view = new Uint8Array(buffer);
@@ -373,13 +344,7 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		if(m_ready) {
-			m_websocket.send(buffer);
-			return 0;
-		}
-		else {
-			return 1;
-		}
+		m_websocket.send(buffer);
 	}
 
 	/**
@@ -397,6 +362,8 @@ function Gambezi(host_address) {
 	 * Visibility: Package
 	 */
 	this.update_subscription = function(key, refresh_skip, set_children) {
+		// This method is always guarded when called, so no need to check readiness
+
 		// Create buffer
 		var buffer = new ArrayBuffer(key.length + 5);
 		var view = new Uint8Array(buffer);
@@ -414,13 +381,7 @@ function Gambezi(host_address) {
 		}
 
 		// Send packet
-		if(m_ready) {
-			m_websocket.send(buffer);
-			return 0;
-		}
-		else {
-			return 1;
-		}
+		m_websocket.send(buffer);
 	}
 
 	/**
@@ -458,6 +419,7 @@ function Node(name, parent_key, parent_gambezi) {
 	var m_name = name;
 	var m_children = [];
 	var m_gambezi = parent_gambezi;
+	var m_send_queue = [];
 	var m_key = [];
 	var m_data = new ArrayBuffer(0);
 	if(parent_key !== null) {
@@ -503,10 +465,16 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibility: Package
 	 */
 	this.set_key = function(key) {
+		// Notify ready
 		m_key = key;
 		m_ready = true;
 		if(m_object.on_ready) {
 			m_object.on_ready();
+		}
+
+		// Handle queued actions
+		while(m_send_queue.length > 0) {
+			(m_send_queue.shift())();
 		}
 	}
 
@@ -604,7 +572,16 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibility: Public
 	 */
 	this.set_data_raw = function(data, offset, length) {
-		return m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
+		if(m_ready) {
+			m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
+			return 0;
+		}
+		else {
+			m_send_queue.push(function() {
+				m_object.set_data_raw(data, offset, length);
+			});
+			return 1;
+		}
 	}
 
 	/**
@@ -616,7 +593,16 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibilty: Public
 	 */
 	this.request_data = function(get_children) {
-		return m_gambezi.request_data(m_object.get_key(), get_children);
+		if(m_ready) {
+			m_gambezi.request_data(m_object.get_key(), get_children);
+			return 0;
+		}
+		else {
+			m_send_queue.push(function() {
+				m_object.request_data(get_children);
+			});
+			return 1;
+		}
 	}
 
 	/**
@@ -634,7 +620,16 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibility: Public
 	 */
 	this.update_subscription = function(refresh_skip, set_children) {
-		return m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+		if(m_ready) {
+			m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+			return 0;
+		}
+		else {
+			m_send_queue.push(function() {
+				m_object.update_subscription(refresh_skip, set_children);
+			});
+			return 1;
+		}
 	}
 
 	/**
@@ -643,7 +638,16 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibility: Public
 	 */
 	this.retrieve_children = function() {
-		return m_gambezi.request_id(m_key.slice(0, -1) , m_name, true);
+		if(m_ready) {
+			m_gambezi.request_id(m_key.slice(0, -1) , m_name, true);
+			return 0;
+		}
+		else {
+			m_send_queue.push(function() {
+				m_object.retrieve_children();
+			});
+			return 1;
+		}
 	}
 
 	/**
@@ -654,19 +658,7 @@ function Node(name, parent_key, parent_gambezi) {
 	this.set_float = function(value) {
 		var length = 4;
 		var buffer = new ArrayBuffer(length);
-		new Float32Array(buffer)[0] = value;
-		var byte_view = new Uint8Array(buffer);
-		// Handle endianess
-		if(!m_gambezi.is_big_endian()) {
-			var temp = byte_view[0];
-			byte_view[0] = byte_view[3];
-			byte_view[3] = temp;
-
-			temp = byte_view[1];
-			byte_view[1] = byte_view[2];
-			byte_view[2] = temp;
-		}
-
+		new DataView(buffer).setFloat32(0, value, false);
 		return m_object.set_data_raw(buffer, 0, length);
 	}
 
@@ -682,22 +674,7 @@ function Node(name, parent_key, parent_gambezi) {
 		if(m_data.byteLength != length) {
 			return NaN;
 		}
-
-		var buffer = new ArrayBuffer(length);
-		var byte_view = new Uint8Array(buffer);
-		byte_view.set(new Uint8Array(m_data));
-		// Handle endianess
-		if(!m_gambezi.is_big_endian()) {
-			var temp = byte_view[0];
-			byte_view[0] = byte_view[3];
-			byte_view[3] = temp;
-
-			temp = byte_view[1];
-			byte_view[1] = byte_view[2];
-			byte_view[2] = temp;
-		}
-
-		return new Float32Array(buffer)[0];
+		return new DataView(m_data).getFloat32(0, false);
 	}
 
 	/**
@@ -755,65 +732,3 @@ function Node(name, parent_key, parent_gambezi) {
 		return output;
 	}
 }
-
-////////////////////////////////////////////////////////////////////////////////
-data = new ArrayBuffer(5)
-dataView = new Uint8Array(data)
-for(var i = 0;i < 5;i++) { dataView[i] = i; }
-
-gambezi = new Gambezi("localhost:7709");
-gambezi.on_ready = function() {
-	gambezi.on_error = console.log;
-	/*
-	var node = gambezi.register_key(['speed test']);
-	node.on_ready = function() {
-		gambezi.set_refresh_rate(10);
-		node.update_subscription(0);
-		node.update_subscription(1);
-		console.log("Running speed test");
-		var count = 0;
-		var limit = 1000;
-		node.on_data_recieved = function(node) {
-			count++;
-			if(count < limit) {
-				//node.request_data();
-			}
-			else {
-				//console.log((window.performance.now() - time) / limit * 1000 + " micro seconds per read (round trip)");
-			}
-			if(count == limit) {
-				console.log((window.performance.now() - time) / limit * 1000 + " micro seconds per read (round trip)");
-			}
-		}
-		var time = window.performance.now();
-		//node.request_data();
-	};
-	*/
-
-	a = gambezi.register_key(['a']);
-	a.on_data_recieved = function(node) {
-		console.log(node.get_name());
-		console.log(new Uint8Array(node.get_data()));
-		console.log(node.get_float());
-	};
-	a.on_ready = function() {
-		a.update_subscription(0x0000);
-		/*
-		b = gambezi.register_key(['a', 'b']);
-		b.on_data_recieved = function(node) {
-			console.log(node.get_name());
-			console.log(new Uint8Array(node.get_data()));
-		};
-		b.on_ready = function() {
-			c = gambezi.register_key(['a', 'b', 'c']);
-			c.on_data_recieved = function(node) {
-				console.log(node.get_name());
-				console.log(new Uint8Array(node.get_data()));
-			};
-			c.on_ready = function() {
-				
-			}
-		}
-		*/
-	}
-};
