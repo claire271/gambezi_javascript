@@ -122,8 +122,8 @@ function Gambezi(host_address) {
 					node.set_data(data_raw);
 
 					// Callback if present
-					if(node.on_data_recieved) {
-						node.on_data_recieved(node);
+					if(node.on_update) {
+						node.on_update(node);
 					}
 				}
 				break;
@@ -445,7 +445,7 @@ function Node(name, parent_key, parent_gambezi) {
 
 	// Callbacks
 	this.on_ready = null;
-	this.on_data_recieved = null;
+	this.on_update = null;
 
 	// Init
 	var m_name = name;
