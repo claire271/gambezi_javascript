@@ -9,10 +9,17 @@ function Gambezi(host_address) {
 	 */
 	var m_object = this;
 
+	// Callbacks
+	this.on_ready = null;
+	this.on_error = null;
+	this.on_close = null;
+
+	// Init
 	var m_send_queue = [];
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
 	var m_ready = false;
+	var m_closed = false;
 
 	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
 	m_websocket.binaryType = 'arraybuffer';
@@ -44,6 +51,17 @@ function Gambezi(host_address) {
 
 		// Get the next queued ID request
 		process_key_request_queue();
+	}
+
+	/**
+	 * Callback when the websocket closes
+	 */
+	m_websocket.onclose = function(event) {
+		// Notify of closed state
+		m_closed = true;
+		if(m_object.on_close) {
+			m_object.on_close(event);
+		}
 	}
 
 	/**
@@ -128,20 +146,6 @@ function Gambezi(host_address) {
 	}
 
 	/**
-	 * This callback is called when this gambezi instance has an error
-	 *
-	 * Visibility: Public
-	 */
-	this.on_error = null;
-	
-	/**
-	 * This callback is called when this gambezi instance is ready
-	 *
-	 * Visibility: Public
-	 */
-	this.on_ready = null;
-
-	/**
 	 * Returns whether this gambezi instance is ready to communicate
 	 *
 	 * Visibility: Public
@@ -149,6 +153,25 @@ function Gambezi(host_address) {
 	this.is_ready = function() {
 		return m_ready;
 	}
+
+	/**
+	 * Returns whether this gambezi instance is closed
+	 *
+	 * Visibility: Public
+	 */
+	this.is_closed = function() {
+		return m_closed;
+	}
+
+	/**
+	 * Closes this gambezi connection
+	 *
+	 * Visibility: Public
+	 */
+	this.close_connection = function() {
+		m_websocket.close();
+	}
+
 
 	/**
 	 * Requests the ID of a node for a given parent key and name
@@ -420,6 +443,11 @@ function Node(name, parent_key, parent_gambezi) {
 	 */
 	var m_object = this;
 
+	// Callbacks
+	this.on_ready = null;
+	this.on_data_recieved = null;
+
+	// Init
 	var m_name = name;
 	var m_children = [];
 	var m_gambezi = parent_gambezi;
@@ -517,20 +545,6 @@ function Node(name, parent_key, parent_gambezi) {
 	this.is_ready = function() {
 		return m_ready;
 	}
-
-	/**
-	 * This callback is called when this node is ready to communicate
-	 *
-	 * Visibility: Public
-	 */
-	this.on_ready = null;
-
-	/**
-	 * This callback is called when this node's value is updated by the server
-	 *
-	 * Visibility: Public
-	 */
-	this.on_data_recieved = null;
 
 	/**
 	 * Gets the child node with the specified name
