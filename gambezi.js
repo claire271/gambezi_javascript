@@ -8,12 +8,14 @@ function Gambezi(host_address) {
 	 * Constructor
 	 */
 	var m_object = this;
-	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
-	m_websocket.binaryType = 'arraybuffer';
+
 	var m_send_queue = [];
 	var m_key_request_queue = [];
 	var m_root_node = new Node("", null, m_object);
 	var m_ready = false;
+
+	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
+	m_websocket.binaryType = 'arraybuffer';
 	// End constructor
 
 	/**
@@ -67,15 +69,14 @@ function Gambezi(host_address) {
 
 				// Get the matching node and set the ID
 				var node = node_traverse(binary_key, true);
-				// Bail if the key is bad
-				if(node == null) {
-					break;
-				}
-				node = node.get_child_with_name(name);
-				node.set_key(binary_key);
+				// No error
+				if(node != null) {
+					node = node.get_child_with_name(name);
+					node.set_key(binary_key);
 
-				// Get the next queued ID request
-				process_key_request_queue();
+					// Get the next queued ID request
+					process_key_request_queue();
+				}
 				break;
 
 			////////////////////////////////////////
@@ -97,15 +98,14 @@ function Gambezi(host_address) {
 
 				// Get the matching node and set the data
 				var node = node_traverse(binary_key, false);
-				// Bail if the key is bad
-				if(node == null) {
-					break;
-				}
-				node.set_data(data_raw);
+				// No error
+				if(node != null) {
+					node.set_data(data_raw);
 
-				// Callback if present
-				if(node.on_data_recieved) {
-					node.on_data_recieved(node);
+					// Callback if present
+					if(node.on_data_recieved) {
+						node.on_data_recieved(node);
+					}
 				}
 				break;
 
@@ -416,6 +416,7 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Constructor
 	 */
 	var m_object = this;
+
 	var m_name = name;
 	var m_children = [];
 	var m_gambezi = parent_gambezi;
@@ -532,13 +533,13 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Gets the child node with the specified name
 	 * Creates a new child with the name if there is no existing child
 	 *
-	 * Visibility: Package
+	 * Visibility: Public
 	 */
 	this.get_child_with_name = function(name) {
 		// See if child already exists
-		for(var i = 0;i < m_children.length;i++) {
-			if(m_children[i].get_name() == name) {
-				return m_children[i];
+		for(var child of m_children) {
+			if(child.get_name() == name) {
+				return child;
 			}
 		}
 
@@ -556,9 +557,9 @@ function Node(name, parent_key, parent_gambezi) {
 	 */
 	this.get_child_with_id = function(id) {
 		// See if child already exists
-		for(var i = 0;i < m_children.length;i++) {
-			if(m_children[i].get_id() == id) {
-				return m_children[i];
+		for(var child of m_children) {
+			if(child.get_id() == id) {
+				return child;
 			}
 		}
 
@@ -573,7 +574,7 @@ function Node(name, parent_key, parent_gambezi) {
 	 */
 	this.set_data_raw = function(data, offset, length) {
 		if(m_ready) {
-			m_gambezi.set_data_raw(m_object.get_key(), data, offset, length);
+			m_gambezi.set_data_raw(m_key, data, offset, length);
 			return 0;
 		}
 		else {
@@ -594,7 +595,7 @@ function Node(name, parent_key, parent_gambezi) {
 	 */
 	this.request_data = function(get_children) {
 		if(m_ready) {
-			m_gambezi.request_data(m_object.get_key(), get_children);
+			m_gambezi.request_data(m_key, get_children);
 			return 0;
 		}
 		else {
@@ -621,7 +622,7 @@ function Node(name, parent_key, parent_gambezi) {
 	 */
 	this.update_subscription = function(refresh_skip, set_children) {
 		if(m_ready) {
-			m_gambezi.update_subscription(m_object.get_key(), refresh_skip, set_children);
+			m_gambezi.update_subscription(m_key, refresh_skip, set_children);
 			return 0;
 		}
 		else {
@@ -633,7 +634,7 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	/**
-	 * Retrieves all children of this node
+	 * Retrieves all children of this node from the server
 	 *
 	 * Visibility: Public
 	 */
