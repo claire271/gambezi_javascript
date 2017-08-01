@@ -4,9 +4,6 @@
  * Visibility: Public
  */
 function Gambezi(host_address) {
-	/**
-	 * Constructor
-	 */
 	var m_object = this;
 
 	// Callbacks
@@ -15,20 +12,51 @@ function Gambezi(host_address) {
 	this.on_close = null;
 
 	// Init
-	var m_send_queue = [];
-	var m_key_request_queue = [];
-	var m_root_node = new Node("", null, m_object);
-	var m_ready = false;
-	var m_closed = false;
+	var m_key_request_queue;
+	var m_root_node;
+	var m_refresh_rate;
+	var m_host_address;
+	var m_ready;
+	var m_closed;
+	var m_websocket;
 
-	var m_websocket = new WebSocket("ws://" + host_address, "gambezi-protocol");
-	m_websocket.binaryType = 'arraybuffer';
-	// End constructor
+	/**
+	 * Constructor
+	 */
+	function constructor() {
+		m_root_node = new Node("", null, m_object);
+		m_refresh_rate = 100;
+		m_host_address = host_address;
+
+		m_object.open_connection();
+	}
+
+	this.open_connection = function() {
+		// Clear queue
+		m_key_request_queue = [];
+
+		// Set flags
+		m_ready = false;
+		m_closed = false;
+
+		// Mark all nodes as not ready to communicate
+		unready_nodes(m_root_node);
+
+		// Websocket init
+		m_websocket = new WebSocket("ws://" + m_host_address, "gambezi-protocol");
+		m_websocket.binaryType = 'arraybuffer';
+		m_websocket.onerror = on_error_internal;
+		m_websocket.onopen = on_open_internal;
+		m_websocket.onclose = on_close_internal;
+		m_websocket.onmessage = on_message_internal;
+	}
 
 	/**
 	 * Callback when there is a websocket error 
+	 *
+	 * Visibility: Private
 	 */
-	m_websocket.onerror = function(event) {
+	function on_error_internal(event) {
 		if(m_object.on_error) {
 			m_object.on_error(event);
 		}
@@ -36,27 +64,78 @@ function Gambezi(host_address) {
 
 	/**
 	 * Callback when the websocket gets initialized
+	 *
+	 * Visibility: Private
 	 */
-	m_websocket.onopen = function(event) {
-		// Notify of ready state
+	function on_open_internal(event) {
+		// Set is ready state
 		m_ready = true;
-		if(m_object.on_ready) {
-			m_object.on_ready(event);
-		}
 
-		// Send queued packets
-		while(m_send_queue.length > 0) {
-			(m_send_queue.shift())();
-		}
+		// Set refresh rate
+		m_object.set_refresh_rate(m_refresh_rate);
+
+		// Queue all IDs for all ndoes
+		queue_id_requests(m_root_node, null);
 
 		// Get the next queued ID request
 		process_key_request_queue();
+
+		// Set root node
+		m_root_node.set_ready(true);
+
+		// Notify of ready state
+		if(m_object.on_ready) {
+			m_object.on_ready(event);
+		}
+	}
+
+	/**
+	 * Recursive method to fetch all IDs for all nodes
+	 * Also sets readiness on all nodes to false
+	 * 
+	 * Visibility: Private
+	 */
+	function queue_id_requests(node, parent_string_key) {
+		// Normal node
+		if(parent_string_key != null) {
+			var string_key = Array.from(parent_string_key);
+			string_key.push(node.get_name());
+			m_key_request_queue.push(string_key);
+		}
+		// Root node
+		else {
+			var string_key = [];
+		}
+
+		// Process children
+		var children = node.get_children();
+		for(var i = 0;i < children.length;i++) {
+			queue_id_requests(children[i], string_key);
+		}
+	}
+
+	/**
+	 * Recursive method to set all child nodes to not ready
+	 * 
+	 * Visibility: Private
+	 */
+	function unready_nodes(node) {
+		// Set node state
+		node.set_ready(false);
+
+		// Process children
+		var children = node.get_children();
+		for(var i = 0;i < children.length;i++) {
+			unready_nodes(children[i]);
+		}
 	}
 
 	/**
 	 * Callback when the websocket closes
+	 *
+	 * Visibility: Private
 	 */
-	m_websocket.onclose = function(event) {
+	function on_close_internal(event) {
 		// Notify of closed state
 		m_closed = true;
 		if(m_object.on_close) {
@@ -66,8 +145,10 @@ function Gambezi(host_address) {
 
 	/**
 	 * Callback when the client recieves a packet from the server
+	 *
+	 * Visibility: Private
 	 */
-	m_websocket.onmessage = function(event) {
+	function on_message_internal(event) {
 		var buffer = new Uint8Array(event.data);
 		switch(buffer[0]) {
 			////////////////////////////////////////
@@ -90,7 +171,7 @@ function Gambezi(host_address) {
 				var node = node_traverse(binary_key, true);
 				// No error
 				if(node != null) {
-					node = node.get_child_with_name(name);
+					node = node.get_child_with_name(name, true);
 					node.set_key(binary_key);
 
 					// Get the next queued ID request
@@ -226,7 +307,7 @@ function Gambezi(host_address) {
 			var parent_binary_key = new Array(string_key.length - 1);
 			var node = m_root_node;
 			for(var i = 0;i < string_key.length - 1;i++) {
-				node = node.get_child_with_name(string_key[i]);
+				node = node.get_child_with_name(string_key[i], true);
 				var id = node.get_id();
 				// Bail if the parent does not have an ID
 				if(id < 0) {
@@ -262,16 +343,18 @@ function Gambezi(host_address) {
 		var node = m_root_node;
 		for(var i = 0;i < string_key.length;i++) {
 			// Go down one level
-			node = node.get_child_with_name(string_key[i]);
+			node = node.get_child_with_name(string_key[i], true);
 
-			// Queue up ID request if needed
-			if(node.get_id() < 0) {
-				m_key_request_queue.push(string_key.slice(0, i + 1));
+			// Queue up ID request if needed and already connected
+			if(m_ready && !m_closed) {
+				if(node.get_id() < 0) {
+					m_key_request_queue.push(string_key.slice(0, i + 1));
+				}
 			}
 		}
 
-		// Get any IDs necessary
-		if(m_ready) {
+		// Get any IDs necessary if already connected
+		if(m_ready && !m_closed) {
 			process_key_request_queue();
 		}
 
@@ -285,7 +368,10 @@ function Gambezi(host_address) {
 	 * Visibility: Public
 	 */
 	this.set_refresh_rate = function(refresh_rate) {
-		if(m_ready) {
+		// Save for later usage
+		m_refresh_rate = refresh_rate;
+
+		if(m_ready && !m_closed) {
 			// Create buffer
 			var buffer = new ArrayBuffer(3);
 			var view = new Uint8Array(buffer);
@@ -302,11 +388,17 @@ function Gambezi(host_address) {
 			return 0;
 		}
 		else {
-			m_send_queue.push(function() {
-				m_object.set_refresh_rate(refresh_rate);
-			});
 			return 1;
 		}
+	}
+
+	/**
+	 * Gets the refresh rate of this client in milliseconds
+	 *
+	 * Visibility: Public
+	 */
+	this.get_refresh_rate = function() {
+		return m_refresh_rate;
 	}
 
 	/**
@@ -429,6 +521,9 @@ function Gambezi(host_address) {
 		}
 		return node;
 	}
+
+	// Run constructor
+	constructor();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -452,9 +547,10 @@ function Node(name, parent_key, parent_gambezi) {
 	var m_children = [];
 	var m_gambezi = parent_gambezi;
 	var m_send_queue = [];
+	var m_refresh_skip = 0xFFFF;
 	var m_key = [];
 	var m_data = new ArrayBuffer(0);
-	if(parent_key !== null) {
+	if(parent_key != null) {
 		for(var i = 0;i < parent_key.length;i++) {
 			m_key.push(parent_key[i]);
 		}
@@ -499,10 +595,7 @@ function Node(name, parent_key, parent_gambezi) {
 	this.set_key = function(key) {
 		// Notify ready
 		m_key = key;
-		m_ready = true;
-		if(m_object.on_ready) {
-			m_object.on_ready();
-		}
+		m_object.set_ready(true);
 
 		// Handle queued actions
 		while(m_send_queue.length > 0) {
@@ -538,6 +631,26 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	/**
+	 * Sets the ready state of this node
+	 *
+	 * Visibility: Package
+	 */
+	this.set_ready = function(ready) {
+		// Save state
+		m_ready = ready;
+
+		// Set refresh skip
+		m_object.update_subscription(m_refresh_skip);
+
+		// Notify ready
+		if(ready) {
+			if(m_object.on_ready) {
+				m_object.on_ready();
+			}
+		}
+	}
+
+	/**
 	 * Returns if this node is ready to communicate
 	 *
 	 * Visibility: Public
@@ -552,12 +665,17 @@ function Node(name, parent_key, parent_gambezi) {
 	 *
 	 * Visibility: Public
 	 */
-	this.get_child_with_name = function(name) {
+	this.get_child_with_name = function(name, create) {
 		// See if child already exists
 		for(var child of m_children) {
 			if(child.get_name() == name) {
 				return child;
 			}
+		}
+		
+		// Bail if requested not to create
+		if(create == undefined || !create) {
+			return null;
 		}
 
 		// Create child if nonexistent
@@ -638,14 +756,14 @@ function Node(name, parent_key, parent_gambezi) {
 	 * Visibility: Public
 	 */
 	this.update_subscription = function(refresh_skip, set_children) {
+		// Save for later usage
+		m_refresh_skip = refresh_skip;
+
 		if(m_ready) {
 			m_gambezi.update_subscription(m_key, refresh_skip, set_children);
 			return 0;
 		}
 		else {
-			m_send_queue.push(function() {
-				m_object.update_subscription(refresh_skip, set_children);
-			});
 			return 1;
 		}
 	}
