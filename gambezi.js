@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 /**
- * Constructs a gambezi instance and connects to a server at the given address
+ * Constructs a gambezi instance and connects to a server
+ *
  * Visibility: Public
  */
 function Gambezi(host_address) {
@@ -17,7 +18,6 @@ function Gambezi(host_address) {
 	var m_refresh_rate;
 	var m_host_address;
 	var m_ready;
-	var m_closed;
 	var m_websocket;
 
 	/**
@@ -31,13 +31,22 @@ function Gambezi(host_address) {
 		m_object.open_connection();
 	}
 
+	/**
+	 * Connects this gambezi instance to the server
+	 *
+	 * Visibility: Public
+	 */
 	this.open_connection = function() {
+		// Bail if the connection is still open
+		if(m_websocket != undefined && m_websocket.readyState == WebSocket.OPEN) {
+			return 1;
+		}
+
 		// Clear queue
 		m_key_request_queue = [];
 
 		// Set flags
 		m_ready = false;
-		m_closed = false;
 
 		// Mark all nodes as not ready to communicate
 		unready_nodes(m_root_node);
@@ -49,6 +58,9 @@ function Gambezi(host_address) {
 		m_websocket.onopen = on_open_internal;
 		m_websocket.onclose = on_close_internal;
 		m_websocket.onmessage = on_message_internal;
+
+		// Success
+		return 0;
 	}
 
 	/**
@@ -91,7 +103,6 @@ function Gambezi(host_address) {
 
 	/**
 	 * Recursive method to fetch all IDs for all nodes
-	 * Also sets readiness on all nodes to false
 	 * 
 	 * Visibility: Private
 	 */
@@ -136,8 +147,12 @@ function Gambezi(host_address) {
 	 * Visibility: Private
 	 */
 	function on_close_internal(event) {
+		m_ready = false;
+
+		// Mark all nodes as not ready to communicate
+		unready_nodes(m_root_node);
+
 		// Notify of closed state
-		m_closed = true;
 		if(m_object.on_close) {
 			m_object.on_close(event);
 		}
@@ -236,15 +251,6 @@ function Gambezi(host_address) {
 	}
 
 	/**
-	 * Returns whether this gambezi instance is closed
-	 *
-	 * Visibility: Public
-	 */
-	this.is_closed = function() {
-		return m_closed;
-	}
-
-	/**
 	 * Closes this gambezi connection
 	 *
 	 * Visibility: Public
@@ -252,7 +258,6 @@ function Gambezi(host_address) {
 	this.close_connection = function() {
 		m_websocket.close();
 	}
-
 
 	/**
 	 * Requests the ID of a node for a given parent key and name
@@ -335,7 +340,7 @@ function Gambezi(host_address) {
 
 	/**
 	 * Registers a string key and gets the corresponding node
-	 * 
+	 *
 	 * Visibility: Public
 	 */
 	this.register_key = function(string_key) {
@@ -346,7 +351,7 @@ function Gambezi(host_address) {
 			node = node.get_child_with_name(string_key[i], true);
 
 			// Queue up ID request if needed and already connected
-			if(m_ready && !m_closed) {
+			if(m_ready) {
 				if(node.get_id() < 0) {
 					m_key_request_queue.push(string_key.slice(0, i + 1));
 				}
@@ -354,7 +359,7 @@ function Gambezi(host_address) {
 		}
 
 		// Get any IDs necessary if already connected
-		if(m_ready && !m_closed) {
+		if(m_ready) {
 			process_key_request_queue();
 		}
 
@@ -371,7 +376,7 @@ function Gambezi(host_address) {
 		// Save for later usage
 		m_refresh_rate = refresh_rate;
 
-		if(m_ready && !m_closed) {
+		if(m_ready) {
 			// Create buffer
 			var buffer = new ArrayBuffer(3);
 			var view = new Uint8Array(buffer);
@@ -543,21 +548,40 @@ function Node(name, parent_key, parent_gambezi) {
 	this.on_update = null;
 
 	// Init
-	var m_name = name;
-	var m_children = [];
-	var m_gambezi = parent_gambezi;
-	var m_send_queue = [];
-	var m_refresh_skip = 0xFFFF;
-	var m_key = [];
-	var m_data = new ArrayBuffer(0);
-	if(parent_key != null) {
-		for(var i = 0;i < parent_key.length;i++) {
-			m_key.push(parent_key[i]);
+	var m_name;
+	var m_gambezi;
+	var m_children;
+	var m_send_queue;
+	var m_refresh_skip;
+	var m_data;
+	var m_key;
+	var m_ready;
+
+	/**
+	 * Constructor
+	 */
+	function constructor() {
+		// Flags
+		m_ready = false;
+
+		m_name = name;
+		m_gambezi = parent_gambezi;
+
+		m_children = [];
+		m_send_queue = [];
+
+		m_refresh_skip = 0xFFFF;
+		m_data = new ArrayBuffer(0);
+
+		// Init key
+		m_key = [];
+		if(parent_key != null) {
+			for(var i = 0;i < parent_key.length;i++) {
+				m_key.push(parent_key[i]);
+			}
+			m_key.push(-1);
 		}
-		m_key.push(-1);
 	}
-	var m_ready = false;
-	// End constructor
 	
 	/**
 	 * Gets all children currently visible to this node
@@ -639,11 +663,11 @@ function Node(name, parent_key, parent_gambezi) {
 		// Save state
 		m_ready = ready;
 
-		// Set refresh skip
-		m_object.update_subscription(m_refresh_skip);
-
 		// Notify ready
 		if(ready) {
+			// Set refresh skip
+			m_object.update_subscription(m_refresh_skip);
+
 			if(m_object.on_ready) {
 				m_object.on_ready();
 			}
@@ -870,6 +894,9 @@ function Node(name, parent_key, parent_gambezi) {
 		output = utf8to16(output);
 		return output;
 	}
+
+	// Run constructor
+	constructor();
 }
 
 // Library included because javascript doesn't include UTF8 encoding things
