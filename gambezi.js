@@ -31,9 +31,9 @@ function Gambezi(host_address, reconnect, reconnect_interval) {
 		m_object.open_connection();
 
 		if(reconnect) {
-			setInterval(
-				m_object.open_connection,
-				reconnect_interval != undefined ? reconnect_interval : 5000);
+			setInterval(function() {
+				m_object.open_connection();
+			}, reconnect_interval != undefined ? reconnect_interval : 5000);
 		}
 	}
 
