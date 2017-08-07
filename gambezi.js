@@ -33,7 +33,7 @@ function Gambezi(host_address, reconnect, reconnect_interval) {
 		if(reconnect) {
 			setInterval(function() {
 				m_object.open_connection();
-			}, reconnect_interval != undefined ? reconnect_interval : 5000);
+			}, reconnect_interval != undefined ? reconnect_interval * 1000 : 5000);
 		}
 	}
 
