@@ -182,6 +182,13 @@ function Gambezi(host_address) {
 				}
 				name = utf8to16(name);
 
+				// Bail if the root node got requested
+				if(binary_key.length == 0) {
+					// Get the next queued ID request
+					process_key_request_queue();
+					break;
+				}
+
 				// Get the matching node and set the ID
 				var node = node_traverse(binary_key, true);
 				// No error
@@ -265,9 +272,12 @@ function Gambezi(host_address) {
 	 * get_children determines if all descendent keys will
 	 * be retrieved
 	 *
+	 * get_children_all determines if all descendent keys will be
+	 * retrieved recursively
+	 *
 	 * Visibility: Package
 	 */
-	this.request_id = function(parent_key, name, get_children) {
+	this.request_id = function(parent_key, name, get_children, get_children_all) {
 		// This method is always guarded when called, so no need to check readiness
 		name = utf16to8(name);
 
@@ -277,7 +287,7 @@ function Gambezi(host_address) {
 
 		// Header
 		buffer[0] = 0x00;
-		buffer[1] = get_children ? 1 : 0;
+		buffer[1] = (get_children_all ? 2 : 0) | (get_children ? 1 : 0);
 
 		// Parent key
 		buffer[2] = parent_key.length;
@@ -332,7 +342,7 @@ function Gambezi(host_address) {
 			else {
 				// Request the ID
 				var name = string_key[string_key.length - 1];
-				m_object.request_id(parent_binary_key, name, false);
+				m_object.request_id(parent_binary_key, name, false, false);
 				break;
 			}
 		}
@@ -793,13 +803,31 @@ function Node(name, parent_key, parent_gambezi) {
 	}
 
 	/**
-	 * Retrieves all children of this node from the server
+	 * Retrieves all immediate children of this node from the server
 	 *
 	 * Visibility: Public
 	 */
 	this.retrieve_children = function() {
 		if(m_ready) {
-			m_gambezi.request_id(m_key.slice(0, -1) , m_name, true);
+			m_gambezi.request_id(m_key , "", true, false);
+			return 0;
+		}
+		else {
+			m_send_queue.push(function() {
+				m_object.retrieve_children();
+			});
+			return 1;
+		}
+	}
+
+	/**
+	 * Retrieves all children of this node recursively from the server
+	 *
+	 * Visibility: Public
+	 */
+	this.retrieve_children_all = function() {
+		if(m_ready) {
+			m_gambezi.request_id(m_key , "", true, true);
 			return 0;
 		}
 		else {
