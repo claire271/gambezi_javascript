@@ -4,7 +4,7 @@
  *
  * Visibility: Public
  */
-function Gambezi(host_address) {
+function Gambezi(host_address, reconnect, reconnect_interval) {
 	var m_object = this;
 
 	// Callbacks
@@ -29,6 +29,12 @@ function Gambezi(host_address) {
 		m_host_address = host_address;
 
 		m_object.open_connection();
+
+		if(reconnect) {
+			setInterval(
+				m_object.open_connection,
+				reconnect_interval != undefined ? reconnect_interval : 5000);
+		}
 	}
 
 	/**
