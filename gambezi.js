@@ -14,11 +14,11 @@ function Gambezi(host_address, reconnect=false, reconnect_interval=5) {
 
 	// Variables
 	this.__key_request_queue = null;
-	this.__root_node = null;
-	this.__refresh_rate = null;
-	this.__host_address = null;
-	this.__ready = null;
-	this.__websocket = null;
+	this.__root_node         = null;
+	this.__refresh_rate      = 0;
+	this.__host_address      = null;
+	this.__ready             = false;
+	this.__websocket         = null;
 
 	// Init
 	this.__root_node = new Node("", null, this);
@@ -261,10 +261,10 @@ Gambezi.prototype.close_connection = function() {
  */
 Gambezi.prototype._request_id = function(parent_key, name, get_children=false, get_children_all=false) {
 	// This method is always guarded when called, so no need to check readiness
-	name = utf16to8(name);
+	name_bytes = utf16to8(name);
 
 	// Create buffer
-	var buf_raw = new ArrayBuffer(parent_key.length + name.length + 4);
+	var buf_raw = new ArrayBuffer(parent_key.length + name_bytes.length + 4);
 	var buf = new Uint8Array(buf_raw);
 
 	// Header
@@ -278,9 +278,9 @@ Gambezi.prototype._request_id = function(parent_key, name, get_children=false, g
 	}
 
 	// Name
-	buf[3 + parent_key.length] = name.length;
-	for(var i = 0;i < name.length;i++) {
-		buf[i + 4 + parent_key.length] = name.charCodeAt(i);
+	buf[3 + parent_key.length] = name_bytes.length;
+	for(var i = 0;i < name_bytes.length;i++) {
+		buf[i + 4 + parent_key.length] = name_bytes.charCodeAt(i);
 	}
 
 	// Send data
@@ -371,8 +371,8 @@ Gambezi.prototype.set_refresh_rate = function(refresh_rate) {
 		buf[0] = 0x02;
 
 		// Length
-		buf[1] = (refresh_rate >> 8) & 0xFF
-		buf[2] = (refresh_rate) & 0xFF
+		buf[1] = (refresh_rate >> 8) & 0xFF;
+		buf[2] = (refresh_rate) & 0xFF;
 
 		// Send packet
 		this.__websocket.send(buf_raw);
@@ -411,8 +411,8 @@ Gambezi.prototype._set_data_raw = function(key, data_raw, offset, length) {
 	}
 
 	// Length
-	buf[2 + key.length] = (length >> 8) & 0xFF
-	buf[3 + key.length] = (length) & 0xFF
+	buf[2 + key.length] = (length >> 8) & 0xFF;
+	buf[3 + key.length] = (length) & 0xFF;
 
 	// Value
 	for(var i = 0;i < length;i++) {
@@ -522,10 +522,10 @@ function Node(name, parent_key, parent_gambezi) {
 	this.__gambezi = null;
 	this.__children = null;
 	this.__send_queue = null;
-	this.__refresh_skip = null;
+	this.__refresh_skip = 0xFFFF;
 	this.__data = null;
 	this.__key = null;
-	this.__ready = null;
+	this.__ready = false;
 
 	// Flags
 	this.__ready = false;
@@ -826,7 +826,7 @@ Node.prototype.set_string = function(value) {
 Node.prototype.get_string = function() {
 	var output = "";
 	var buffer = new Uint8Array(this.__data);
-	for(var i = 0;i < m_data.byteLength;i++) {
+	for(var i = 0;i < this.__data.byteLength;i++) {
 		output += String.fromCharCode(buffer[i]);
 	}
 	output = utf8to16(output);
