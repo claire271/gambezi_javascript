@@ -39,7 +39,7 @@ function Gambezi(host_address, reconnect=true, reconnect_interval=5) {
 	this.open_connection();
 
 	// Setup heartbeat
-	this.__root_node.set_subscription(Math.round(this.__reconnect_interval * 1000 / this.__refresh_rate / 2))
+	this.__root_node.set_subscription(Math.round(this.__reconnect_interval * 1000 / this.__refresh_rate / 2));
 	this.__root_node.on_update = function(node) {
 		this.__heartbeat = true;
 	}.bind(this);
@@ -50,7 +50,7 @@ function Gambezi(host_address, reconnect=true, reconnect_interval=5) {
 		if(!this.__heartbeat) {
 			this.close_connection();
 
-			// Reopen if requested too
+			// Reopen if requested to
 			if(reconnect) {
 				this.open_connection();
 			}
@@ -123,7 +123,7 @@ Gambezi.prototype.set_refresh_rate = function(refresh_rate) {
 	this.__refresh_rate = refresh_rate;
 
 	// Update heartbeat
-	this.__root_node.set_subscription(Math.round(this.__reconnect_interval * 1000 / this.__refresh_rate / 2))
+	this.__root_node.set_subscription(Math.round(this.__reconnect_interval * 1000 / this.__refresh_rate / 2));
 
 	if(this.__ready) {
 		// Create buffer
@@ -215,7 +215,7 @@ Gambezi.prototype.get_root_node = function() {
 Gambezi.prototype.__request_node = function(string_key) {
 	// Queue up the ID requests and get the node
 	var node = this.__root_node;
-	for(var i = 0;i < string_key.length;i++) {
+	for(let i = 0;i < string_key.length;i++) {
 		// Go down one level
 		node = node._get_child_with_name(string_key[i]);
 
@@ -240,13 +240,12 @@ Gambezi.prototype.__request_node = function(string_key) {
 /**
  * Requests the ID of a node for a given parent key and name
  *
- * get_children determines if all descendent keys will
- * be retrieved
+ * get_children determines if all descendent keys will be retrieved
  *
- * get_children_all determines if all descendent keys will be
- * retrieved recursively
+ * get_children_all determines if all descendent keys will be retrieved 
+ * recursively
  */
-Gambezi.prototype._request_id = function(parent_key, name, get_children=false, get_children_all=false) {
+Gambezi.prototype._request_id = function(parent_key, name, get_children, get_children_all) {
 	// This method is always guarded when called, so no need to check readiness
 	name_bytes = utf16to8(name);
 
@@ -260,13 +259,13 @@ Gambezi.prototype._request_id = function(parent_key, name, get_children=false, g
 
 	// Parent key
 	buf[2] = parent_key.length;
-	for(var i = 0;i < parent_key.length;i++) {
+	for(let i = 0;i < parent_key.length;i++) {
 		buf[i + 3] = parent_key[i];
 	}
 
 	// Name
 	buf[3 + parent_key.length] = name_bytes.length;
-	for(var i = 0;i < name_bytes.length;i++) {
+	for(let i = 0;i < name_bytes.length;i++) {
 		buf[i + 4 + parent_key.length] = name_bytes.charCodeAt(i);
 	}
 
@@ -289,7 +288,7 @@ Gambezi.prototype.__process_key_request_queue = function() {
 		var string_key = this.__key_request_queue.shift();
 		var parent_binary_key = new Array(string_key.length - 1);
 		var node = this.__root_node;
-		for(var i = 0;i < string_key.length - 1;i++) {
+		for(let i = 0;i < string_key.length - 1;i++) {
 			node = node._get_child_with_name(string_key[i]);
 			var ident = node.get_id();
 			// Bail if the parent does not have an ID
@@ -356,12 +355,12 @@ Gambezi.prototype.__unready_nodes = function(node) {
 /**
  * Gets the node for a given binary key
  *
- * get_parent determines if the immediate parent of the binary
- * key will be retrieved instead
+ * get_parent determines if the immediate parent of the binary key will be
+ * retrieved instead
  */
-Gambezi.prototype.__traverse_tree = function(binary_key, get_parent=false) {
+Gambezi.prototype.__traverse_tree = function(binary_key, get_parent) {
 	var node = this.__root_node;
-	for(var i = 0;i < binary_key.length - (get_parent ? 1 : 0);i++) {
+	for(let i = 0;i < binary_key.length - (get_parent ? 1 : 0);i++) {
 		node = node._get_child_with_id(binary_key[i]);
 		// Bail if the key is bad
 		if(node == null) {
@@ -379,10 +378,9 @@ Gambezi.prototype.__traverse_tree = function(binary_key, get_parent=false) {
 /**
  * Requests the value of a node
  * 
- * get_children determines if all descendent keys will
- * be retrieved
+ * get_children determines if all descendent keys will be retrieved
  */
-Gambezi.prototype._request_data = function(key, get_children=false) {
+Gambezi.prototype._request_data = function(key, get_children) {
 	// This method is always guarded when called, so no need to check readiness
 
 	// Create buffer
@@ -395,7 +393,7 @@ Gambezi.prototype._request_data = function(key, get_children=false) {
 
 	// Key
 	buf[2] = key.length;
-	for(var i = 0;i < key.length;i++) {
+	for(let i = 0;i < key.length;i++) {
 		buf[i + 3] = key[i];
 	}
 
@@ -420,7 +418,7 @@ Gambezi.prototype._set_data = function(key, data_raw, offset, length) {
 
 	// Key
 	buf[1] = key.length;
-	for(var i = 0;i < key.length;i++) {
+	for(let i = 0;i < key.length;i++) {
 		buf[i + 2] = key[i];
 	}
 
@@ -429,7 +427,7 @@ Gambezi.prototype._set_data = function(key, data_raw, offset, length) {
 	buf[3 + key.length] = (length) & 0xFF;
 
 	// Value
-	for(var i = 0;i < length;i++) {
+	for(let i = 0;i < length;i++) {
 		buf[i + 4 + key.length] = data[i + offset];
 	}
 
@@ -441,16 +439,16 @@ Gambezi.prototype._set_data = function(key, data_raw, offset, length) {
 /**
  * Sets the subscription for a paticular key
  *
- * set_children determines if all descendent keys will
- * be retrieved when the node is updated
+ * set_children determines if all descendent keys will be retrieved when the
+ * node is updated
  *
  * Values for refresh_skip
  * 0x0000 - get node value updates as soon as they arrive
  * 0xFFFF - unsubscribe from this key
- * Any other value of refresh skip indicates that this node
- * will be retrieved every n client updates
+ * Any other value of refresh skip indicates that this node will be retrieved
+ * every n client updates
  */
-Gambezi.prototype._set_subscription = function(key, refresh_skip, set_children=false) {
+Gambezi.prototype._set_subscription = function(key, refresh_skip, set_children) {
 	// This method is always guarded when called, so no need to check readiness
 
 	// Create buffer
@@ -465,7 +463,7 @@ Gambezi.prototype._set_subscription = function(key, refresh_skip, set_children=f
 
 	// Key
 	buf[4] = key.length;
-	for(var i = 0;i < key.length;i++) {
+	for(let i = 0;i < key.length;i++) {
 		buf[i + 5] = key[i];
 	}
 
@@ -541,13 +539,13 @@ Gambezi.prototype.__on_message = function(event) {
 	if(buf[0] == 0) {
 		// Extract binary key
 		var binary_key = new Array(buf[1]);
-		for(var i = 0;i < binary_key.length;i++) {
+		for(let i = 0;i < binary_key.length;i++) {
 			binary_key[i] = buf[i + 2];
 		}
 
 		// Extract name
 		var name = "";
-		for(var i = 0;i < buf[binary_key.length + 2];i++) {
+		for(let i = 0;i < buf[binary_key.length + 2];i++) {
 			name += String.fromCharCode(buf[binary_key.length + 3 + i]);
 		}
 		name = utf8to16(name);
@@ -576,7 +574,7 @@ Gambezi.prototype.__on_message = function(event) {
 	else if(buf[0] == 1) {
 		// Extract binary key
 		var binary_key = new Array(buf[1]);
-		for(var i = 0;i < binary_key.length;i++) {
+		for(let i = 0;i < binary_key.length;i++) {
 			binary_key[i] = buf[i + 2];
 		}
 
@@ -584,7 +582,7 @@ Gambezi.prototype.__on_message = function(event) {
 		var data_length = (buf[binary_key.length + 2] << 8) | (buf[binary_key.length + 3]);
 		var data_raw = new ArrayBuffer(data_length);
 		var data = new Uint8Array(data_raw);
-		for(var i = 0;i < data_length;i++) {
+		for(let i = 0;i < data_length;i++) {
 			data[i] = buf[binary_key.length + 4 + i];
 		}
 
@@ -601,7 +599,7 @@ Gambezi.prototype.__on_message = function(event) {
 	else if(buf[0] == 2) {
 		// Extract message
 		var message = "";
-		for(var i = 0;i < buf[1];i++) {
+		for(let i = 0;i < buf[1];i++) {
 			message += String.fromCharCode(buf[2 + i]);
 		}
 		message = utf8to16(message);
@@ -621,8 +619,8 @@ Gambezi.prototype.__on_message = function(event) {
 
 //------------------------------------------------------------------------------
 /**
- * Constructs a node with a given name, parent key, and gambezi
- * If the parent key is null, the Node is constructed as the root node
+ * Constructs a node with a given name, parent node, and gambezi
+ * If the parent node is null, the Node is constructed as the root node
  */
 function _Node(name, parent_node, parent_gambezi) {
 	// Callbacks
@@ -764,14 +762,13 @@ _Node.prototype.get_ready = function() {
 /**
  * Updates the subscription for this node
  *
- * set_children determines if all descendent keys will
- * be retrieved
+ * set_children determines if all descendent keys will be retrieved
  *
  * Values for refresh_skip
  * 0x0000 - get node value updates as soon as they arrive
  * 0xFFFF - unsubscribe from this key
- * Any other value of refresh skip indicates that this node
- * will be retrieved every n client updates
+ * Any other value of refresh skip indicates that this node will be retrieved
+ * every n client updates
  */
 _Node.prototype.set_subscription = function(refresh_skip, set_children=false) {
 	// Save for later usage
@@ -811,7 +808,6 @@ _Node.prototype.get_subscription = function() {
 _Node.prototype.get_node = function(string_key, delimiter="/") {
 	return this.__gambezi.get_node(string_key, delimiter, this);
 }
-
 
 //------------------------------------------------------------------------------
 /**
@@ -862,7 +858,7 @@ _Node.prototype.get_children = function() {
  */
 _Node.prototype._get_child_with_id = function(ident) {
 	// See if child already exists
-	for(var child of this.__children) {
+	for(let child of this.__children) {
 		if(child.get_id() == ident) {
 			return child;
 		}
@@ -879,7 +875,7 @@ _Node.prototype._get_child_with_id = function(ident) {
  */
 _Node.prototype._get_child_with_name = function(name) {
 	// See if child already exists
-	for(var child of this.__children) {
+	for(let child of this.__children) {
 		if(child.get_name() == name) {
 			return child;
 		}
@@ -899,8 +895,7 @@ _Node.prototype._get_child_with_name = function(name) {
 /**
  * Requests the value of a node
  * 
- * get_children determines if all descendent keys will
- * be retrieved
+ * get_children determines if all descendent keys will be retrieved
  */
 _Node.prototype.request_data = function(get_children=false) {
 	if(this.__ready) {
@@ -1037,7 +1032,7 @@ _Node.prototype.set_string = function(value) {
 
 	var buffer = new ArrayBuffer(value.length);
 	var byte_view = new Uint8Array(buffer);
-	for(var i = 0;i < value.length;i++) {
+	for(let i = 0;i < value.length;i++) {
 		byte_view[i] = value.charCodeAt(i);
 	}
 	return this.set_data(buffer, 0, value.length);
@@ -1050,7 +1045,7 @@ _Node.prototype.set_string = function(value) {
 _Node.prototype.get_string = function() {
 	var output = "";
 	var buffer = new Uint8Array(this.__data);
-	for(var i = 0;i < this.__data.byteLength;i++) {
+	for(let i = 0;i < this.__data.byteLength;i++) {
 		output += String.fromCharCode(buffer[i]);
 	}
 	output = utf8to16(output);
